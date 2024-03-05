@@ -22,7 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "memory_map.h"
-
+#include "flash_eeprom.h"
+#include "utils.h"
 #include "../../version.h"
 #include <stdio.h>
 #include <string.h>
@@ -101,6 +102,57 @@ unsigned int readSoftResetIndicator() {
     return HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1);
 }
 
+// Define a function to check if the application is valid
+uint8_t IsApplicationValid(uint32_t address) {
+    // Check if the first word of the application code is a valid stack pointer
+    uint32_t stack_pointer = *(__IO uint32_t*) address;
+    if (stack_pointer < SRAM_BASE_ADDRESS || stack_pointer > SRAM_BASE_ADDRESS + SRAM_SIZE) {
+        return 0; // Invalid stack pointer
+    }
+
+    // Check if the second word of the application code is a valid reset handler address
+    uint32_t reset_handler = *(__IO uint32_t*) (address + 4);
+    if (reset_handler < FLASH_BASE || reset_handler > FLASH_BASE + FLASH_SIZE) {
+        return 0; // Invalid reset handler address
+    }
+
+    return 1;
+}
+
+void boot_application() {
+
+	printf("Booting Application ...\r\n");
+	HAL_Delay(500);
+
+	/* reset controllers and disable interrupts */
+	HAL_CRC_DeInit(&hcrc);
+	HAL_RTC_DeInit(&hrtc);
+	HAL_I2C_DeInit(&hi2c1);
+	HAL_I2C_DeInit(&hi2c2);
+	HAL_SPI_DeInit(&hspi1);
+	HAL_UART_DeInit(&huart5);
+	HAL_TIM_Base_DeInit(&htim3);
+	HAL_TIM_Base_DeInit(&htim21);
+	HAL_RCC_DeInit();
+	HAL_SuspendTick();
+
+	SysTick->CTRL = 0;
+	SysTick->LOAD = 0;
+	SysTick->VAL = 0;
+
+	__DSB();
+	__ISB();
+
+	/* Jump to user application */
+	JumpAddress = *(__IO uint32_t*) (APPLICATION_ADDRESS + 4);
+	Jump_To_Application = (pFunction) JumpAddress;
+
+	/* Initialize user application's Stack Pointer */
+	__set_MSP(*(__IO uint32_t*) APPLICATION_ADDRESS);
+	Jump_To_Application();
+
+}
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -132,6 +184,11 @@ static void MX_RTC_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+  uint32_t uid[3]; // Array to store the 96-bit UID
+  uint8_t i2c_slave_address = 0x00;
+  uint32_t sleep_time = 0x20;
+  uint8_t boot_mode = 0;
+  HAL_StatusTypeDef status = HAL_OK;
 
   /* USER CODE END 1 */
 
@@ -166,63 +223,74 @@ int main(void)
 
   printf("\033c");
   printf("\r\n\r\nUSTX Boot-loader v%s\r\n", BOOTLOADER_VER);
+  printf("CPU Clock Frequency: %lu MHz\r\n", HAL_RCC_GetSysClockFreq() / 1000000);
+  // Get the unique ID
+  get_unique_identifier(uid);
+  sleep_time = fnv1a_32((uint8_t *)uid, sizeof(uid));
+  sleep_time &= 0x000001FF;
+  printf("Unique sleep: %lu ms\r\n", sleep_time);
+  HAL_Delay(sleep_time);
 
+  status = EEPROM_Read(0, &i2c_slave_address, 1);
+  if(status != HAL_OK){
+	Error_Handler();
+  } else {
+	    // Check if the read address is a valid I2C address (7-bit)
+	    if ((i2c_slave_address >= 0x08 && i2c_slave_address <= 0x77) &&
+	        ((i2c_slave_address & 0x01) == 0)) {
+	        // Valid I2C address
+
+	    } else {
+	        // Not a valid I2C address, select a random address
+	    	printf("I2C Address: 0x%02X NOT A Valid ADDRESS\r\n", i2c_slave_address);
+	        srand(HAL_GetTick()); // Initialize random seed
+	        i2c_slave_address = (rand() % (0x77 - 0x08 + 1)) + 0x08; // Generate random address
+	        // Store the random address back to EEPROM
+	        status = EEPROM_Write(0, &i2c_slave_address, 1);
+	        if (status != HAL_OK) {
+	            // Handle error
+		    	printf("EEPROM_Write I2C Address ERROR\r\n");
+	        }
+	    }
+  }
+
+  printf("I2C Address: 0x%02X\r\n", i2c_slave_address);
 
   /* Test soft reset bootloader mode request */
   if(__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST))
   {
-		printf("<<<=== SOFT RESET DETECTED ===>>>\r\n");
-
 	    unsigned int reset_indicator = 0x0;
 	  	reset_indicator = readSoftResetIndicator();
+		printf("<<<=== SOFT RESET DETECTED ===>>>\r\n");
 		printf("Reset Indicator: 0x%08X\r\n", reset_indicator);
 
 		if(reset_indicator == SOFT_RESET_INDICATOR){
-			printf("<<<=== Enter Bootloader Mode ===>>>\r\n");
-			clearSoftResetIndicator();
+			boot_mode = 1;
+			printf("<<<=== Bootloader Mode Requested ===>>>\r\n");
+		}else{
+			boot_mode = 0;
+			printf("<<<=== Bootloader Mode Not Requested ===>>>\r\n");
 		}
 
+		clearSoftResetIndicator();
 
 	    // Clear the soft reset flag
 	    __HAL_RCC_CLEAR_RESET_FLAGS();
 
-
-  }else
-  {
-
-	    printf("Booting Application ...\r\n");
-
-		HAL_Delay(500);
-
-		/* reset controllers and disable interrupts */
-
-		HAL_CRC_DeInit(&hcrc);
-		HAL_RTC_DeInit(&hrtc);
-		HAL_I2C_DeInit(&hi2c1);
-		HAL_I2C_DeInit(&hi2c2);
-		HAL_SPI_DeInit(&hspi1);
-		HAL_UART_DeInit(&huart5);
-		HAL_TIM_Base_DeInit(&htim3);
-		HAL_TIM_Base_DeInit(&htim21);
-		HAL_RCC_DeInit();
-		HAL_SuspendTick();
-
-		SysTick->CTRL = 0;
-		SysTick->LOAD = 0;
-		SysTick->VAL = 0;
-
-		__DSB();
-		__ISB();
-
-		/* Jump to user application */
-		JumpAddress = *(__IO uint32_t*) (APPLICATION_ADDRESS + 4);
-		Jump_To_Application = (pFunction) JumpAddress;
-
-		/* Initialize user application's Stack Pointer */
-		__set_MSP(*(__IO uint32_t*) APPLICATION_ADDRESS);
-		Jump_To_Application();
   }
 
+  if(boot_mode == 0)
+  {
+		if(IsApplicationValid(APPLICATION_ADDRESS))
+		{
+			boot_application();
+		}else{
+			printf("No Valid Application found!\r\n");
+		}
+  }
+
+
+  printf("<<<=== Enter Bootloader Mode ===>>>\r\n");
 
 
   /* USER CODE END 2 */
@@ -235,7 +303,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  HAL_GPIO_TogglePin(nHB_LED_GPIO_Port, nHB_LED_Pin);
-	  HAL_Delay(500);
+	  HAL_Delay(200);
   }
   /* USER CODE END 3 */
 }
