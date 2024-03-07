@@ -290,8 +290,10 @@ int main(void)
   }
 
 
-  printf("<<<=== Enter Bootloader Mode ===>>>\r\n");
+  printf("Entering Bootloader Mode...\r\n");
+  I2C_Slave_Init(i2c_slave_address);
 
+  printf("<<<=== Bootloader Mode ACTIVE ===>>>\r\n");
 
   /* USER CODE END 2 */
 
