@@ -24,6 +24,7 @@
 #include "memory_map.h"
 #include "flash_eeprom.h"
 #include "utils.h"
+#include "i2c_slave.h"
 #include "../../version.h"
 #include <stdio.h>
 #include <string.h>
@@ -412,7 +413,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00707CBB;
+  hi2c1.Init.Timing = 0x00300F38;
   hi2c1.Init.OwnAddress1 = 104;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
