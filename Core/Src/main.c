@@ -81,6 +81,22 @@ DMA_HandleTypeDef hdma_usart5_rx;
 DMA_HandleTypeDef hdma_usart5_tx;
 
 /* USER CODE BEGIN PV */
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
+static void MX_I2C2_Init(void);
+static void MX_SPI1_Init(void);
+static void MX_USART5_UART_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_CRC_Init(void);
+static void MX_TIM21_Init(void);
+static void MX_RTC_Init(void);
+/* USER CODE BEGIN PFP */
+
 
 PUTCHAR_PROTOTYPE
 {
@@ -154,22 +170,6 @@ void boot_application() {
 
 }
 
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_DMA_Init(void);
-static void MX_I2C2_Init(void);
-static void MX_SPI1_Init(void);
-static void MX_USART5_UART_Init(void);
-static void MX_TIM3_Init(void);
-static void MX_I2C1_Init(void);
-static void MX_CRC_Init(void);
-static void MX_TIM21_Init(void);
-static void MX_RTC_Init(void);
-/* USER CODE BEGIN PFP */
-
 
 /* USER CODE END PFP */
 
@@ -229,7 +229,8 @@ int main(void)
   get_unique_identifier(uid);
   sleep_time = fnv1a_32((uint8_t *)uid, sizeof(uid));
   sleep_time &= 0x000001FF;
-  printf("Unique sleep: %lu ms\r\n", sleep_time);
+
+  printf("Sleeping Random TIME: %lu ms\r\n", sleep_time);
   HAL_Delay(sleep_time);
 
   status = EEPROM_Read(0, &i2c_slave_address, 1);
@@ -257,23 +258,25 @@ int main(void)
 
   printf("I2C Address: 0x%02X\r\n", i2c_slave_address);
 
+  HAL_GPIO_WritePin(nHB_LED_GPIO_Port, nHB_LED_Pin, GPIO_PIN_SET);
+
   /* Test soft reset bootloader mode request */
   if(__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST))
   {
 	    unsigned int reset_indicator = 0x0;
 	  	reset_indicator = readSoftResetIndicator();
-		printf("<<<=== SOFT RESET DETECTED ===>>>\r\n");
 		printf("Reset Indicator: 0x%08X\r\n", reset_indicator);
 
 		if(reset_indicator == SOFT_RESET_INDICATOR){
 			boot_mode = 1;
-			printf("<<<=== Bootloader Mode Requested ===>>>\r\n");
+			printf("Bootloader Mode Requested\r\n");
+			clearSoftResetIndicator();
 		}else{
 			boot_mode = 0;
-			printf("<<<=== Bootloader Mode Not Requested ===>>>\r\n");
+			printf("Bootloader Mode Not Requested\r\n");
+
 		}
 
-		clearSoftResetIndicator();
 
 	    // Clear the soft reset flag
 	    __HAL_RCC_CLEAR_RESET_FLAGS();
@@ -287,6 +290,7 @@ int main(void)
 			boot_application();
 		}else{
 			printf("No Valid Application found!\r\n");
+			clearSoftResetIndicator();
 		}
   }
 
@@ -306,7 +310,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  HAL_GPIO_TogglePin(nHB_LED_GPIO_Port, nHB_LED_Pin);
-	  HAL_Delay(200);
+	  HAL_Delay(500);
   }
   /* USER CODE END 3 */
 }
@@ -829,6 +833,9 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+
+  HAL_GPIO_WritePin(nHB_LED_GPIO_Port, nHB_LED_Pin, GPIO_PIN_RESET);
+  printf("Error_Handler");
   __disable_irq();
   while (1)
   {
