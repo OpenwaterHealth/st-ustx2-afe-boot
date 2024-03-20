@@ -184,6 +184,7 @@ void boot_application() {
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
   uint32_t uid[3]; // Array to store the 96-bit UID
   uint8_t i2c_slave_address = 0x00;
